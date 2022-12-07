@@ -1,7 +1,9 @@
 local lazy = require("diffview.lazy")
 local oop = require("diffview.oop")
 
+local Diff1 = lazy.access("diffview.scene.layouts.diff_1", "Diff1") ---@type Diff1|LazyModule
 local File = lazy.access("diffview.vcs.file", "File") ---@type vcs.File|LazyModule
+local GitAdapter = lazy.access("diffview.vcs.adapters.git", "GitAdapter") ---@type GitAdapter|LazyModule
 local RevType = lazy.access("diffview.vcs.rev", "RevType") ---@type RevType|LazyModule
 local config = lazy.require("diffview.config") ---@module "diffview.config"
 local lib = lazy.require("diffview.lib") ---@module "diffview.lib"
@@ -62,6 +64,12 @@ function Window:is_focused()
   return self:is_valid() and api.nvim_get_current_win() == self.id
 end
 
+function Window:is_file_open()
+  return self:is_valid()
+      and self.file:is_valid()
+      and api.nvim_win_get_buf(self.id) == self.file.bufnr
+end
+
 ---@param callback fun(file: vcs.File)
 function Window:load_file(callback)
   assert(self.file)
@@ -87,11 +95,25 @@ function Window:open_file(callback)
         self:_save_winopts()
       end
 
-      self:apply_file_winopts()
+      local winopt_overrides
+      local base_rev = utils.tbl_access(self, "parent.parent.revs.a") --[[@as Rev? ]]
+      local use_inline_diff = self.file.kind ~= "conflicting"
+          and self.parent:instanceof(Diff1.__get())
+          and self.file.adapter:instanceof(GitAdapter.__get())
+
+      if use_inline_diff then
+        winopt_overrides = { foldmethod = "manual", diff = false }
+      end
+
+      self:apply_file_winopts(winopt_overrides)
       self.file:attach_buffer(false, {
         keymaps = config.get_layout_keymaps(self.parent),
         disable_diagnostics = self.file.kind == "conflicting"
             and config.get_config().view.merge_tool.disable_diagnostics,
+        inline_diff = {
+          enabled = use_inline_diff,
+          base = base_rev and base_rev:object_name(),
+        }
       })
 
       api.nvim_win_call(self.id, function()
@@ -163,10 +185,15 @@ function Window:_restore_winopts()
   end
 end
 
-function Window:apply_file_winopts()
+---@param overrides WindowOptions?
+function Window:apply_file_winopts(overrides)
   assert(self.file)
   if self.file.winopts then
+    if overrides then
+      utils.set_local(self.id, vim.tbl_extend("force", self.file.winopts, overrides))
+    else
     utils.set_local(self.id, self.file.winopts)
+  end
   end
 end
 
