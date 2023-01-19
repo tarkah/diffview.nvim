@@ -304,7 +304,7 @@ end
 
 local layout_map = {
   diff1_plain = Diff1,
-  diff_1_inline = Diff1Inline,
+  diff1_inline = Diff1Inline,
   diff2_horizontal = Diff2Hor,
   diff2_vertical = Diff2Ver,
   diff3_horizontal = Diff3Hor,
